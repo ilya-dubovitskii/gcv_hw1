@@ -93,20 +93,24 @@ def pairwise_interpolate_predictions(
     # Distances to be produces as output.
     distances_j_interp = np.zeros(len(points_j), dtype=float)
 
+    # Ravel data beforehand to increase speed
+    image_1d = image_i.ravel()
+    distances_1d = distances_i.ravel()
+
     for idx, point_from_j in tqdm(enumerate(reprojected_j)):
         point_nn_indexes = nn_indexes_in_i[idx]
         # Build an [n, 3] array of XYZ coordinates for each reprojected point by taking
         # UV values from pixel grid and Z value from depth image.
         # TODO: your code here: use `point_nn_indexes` found previously
         #  and distance values from `image_i` indexed by the same `point_nn_indexes`
-        point_from_j_nns = np.hstack((uv_i[point_nn_indexes], image_i.reshape(-1, 1)[point_nn_indexes]))
+        point_from_j_nns = np.hstack((uv_i[point_nn_indexes], image_1d[point_nn_indexes][:, None]))
 
         # TODO: compute a flag indicating the possibility to interpolate
         #  by checking distance between `point_from_j` and its `point_from_j_nns`
         #  against the value of `distance_interpolation_threshold`
         distances_to_nearest = np.linalg.norm(point_from_j_nns - point_from_j, axis=1)
-        num_of_illegal_elems = np.argwhere(distances_to_nearest >= distance_interpolation_threshold).shape[0]
-        interp_mask[idx] = True if num_of_illegal_elems == 0 else False
+        legal_points = distances_to_nearest < distance_interpolation_threshold
+        interp_mask[idx] = np.all(legal_points)
 
         if interp_mask[idx]:
             # Actually perform interpolation
@@ -119,8 +123,8 @@ def pairwise_interpolate_predictions(
                 
                 interpolator = interpolate.interp2d(x=point_from_j_nns[:, 0],
                                                     y=point_from_j_nns[:, 1],
-                                                    z=distances_i.ravel()[point_nn_indexes])
-                distances_j_interp[idx] = interpolator(point_from_j[0], point_from_j[1])
+                                                    z=distances_1d[point_nn_indexes])
+                distances_j_interp[idx] = interpolator(x=point_from_j[0], y=point_from_j[1])
 
             except ValueError as e:
                 print('Error while interpolating point {idx}:'
